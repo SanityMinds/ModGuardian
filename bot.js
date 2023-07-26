@@ -11,10 +11,10 @@ const client = new Client({
   ],
 });
 
-const allowedUserId = 'USER_ID';
-const commandPrefix = '.';
+const allowedUserId = 'YOUR USER ID ';
+const commandPrefix = '...';
 const bannedUsersFile = 'bannedUsers.json';
-const appealEmail = 'ModGuardian@pm.me';
+const appealEmail = 'APPEAL EMAIL';
 
 const bansPerPage = 10; // Number of bans to display per page
 
@@ -68,9 +68,51 @@ async function unbanUserFromAllServers(userId) {
   }
 }
 
-client.on('ready', () => {
-  console.log(`Logged in as ${client.user.tag}`);
-});
+async function kickUnder7DaysOldMembers() {
+  try {
+    const guilds = client.guilds.cache.values();
+    for (const guild of guilds) {
+      try {
+        const members = await guild.members.fetch();
+        for (const member of members.values()) {
+          const accountAgeInDays = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24);
+          if (accountAgeInDays < 7) {
+            try {
+              // Send a direct message to the user (optional)
+              const dmChannel = await member.user.createDM();
+              if (dmChannel) {
+                const kickMessage =
+                  `Hello ${member.user.username},\n` +
+                  `You have been kicked from this server because your Discord account is less than 7 days old. ` +
+                  `If you believe this is a mistake, please email your appeal to ${appealEmail}.`;
+                await dmChannel.send(kickMessage);
+              }
+            } catch (error) {
+              console.error('Error sending DM to kicked user:', error);
+            }
+
+            // Kick the user from the server
+            try {
+              await member.kick('Account age is less than 7 days');
+              console.log(`Kicked ${member.user.tag} from ${guild.name}`);
+            } catch (error) {
+              if (error.code === 50013) {
+                // If the bot lacks the necessary permissions, it will not attempt to kick the user.
+                console.error(`Missing permissions to kick ${member.user.tag} from ${guild.name}`);
+              } else {
+                console.error(`Error kicking ${member.user.tag} from ${guild.name}:`, error);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching members from ${guild.name}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching guilds:', error);
+  }
+}
 
 client.on('messageCreate', async (message) => {
   if (!message.content.startsWith(commandPrefix) || message.author.bot) return;
@@ -200,6 +242,57 @@ client.on('messageCreate', async (message) => {
       .addField('Command: help', 'Usage: `.help`\nDescription: Displays this help message.');
 
     message.channel.send({ embeds: [helpEmbed] });
+    
+  } else if (command === 'servers') {
+    if (message.author.id !== allowedUserId) {
+      return message.reply('You don\'t have permission to use this command.');
+    }
+
+    const guilds = Array.from(client.guilds.cache.values());
+    const page = parseInt(args[0], 10) || 1;
+    const serversPerPage = 5;
+
+    const totalPages = Math.ceil(guilds.length / serversPerPage);
+    if (page < 1 || page > totalPages) {
+      return message.reply(`Invalid page number. Please enter a number between 1 and ${totalPages}.`);
+    }
+
+    const startIndex = (page - 1) * serversPerPage;
+    const endIndex = page * serversPerPage;
+    const pagedGuilds = guilds.slice(startIndex, endIndex);
+
+    const embed = new MessageEmbed()
+      .setColor('#00FF00')
+      .setTitle('List of Servers')
+      .setDescription(`Page ${page}/${totalPages}\nHere are the servers:`)
+      .setTimestamp();
+
+    for (const guild of pagedGuilds) {
+      embed.addFields(
+        { name: 'Server Name', value: guild.name, inline: true },
+        { name: 'Server ID', value: guild.id, inline: true },
+        { name: 'Member Count', value: guild.memberCount.toString(), inline: true },
+      );
+    }
+
+    message.channel.send({ embeds: [embed] });
+  } else if (command === 'invite') {
+    if (message.author.id !== allowedUserId) {
+      return message.reply('You don\'t have permission to use this command.');
+    }
+
+    const userId = getUserIdFromMessage(args[0]);
+    if (!userId) {
+      return message.reply('Please provide a valid user ID to generate an invite.');
+    }
+
+    try {
+      const invite = await message.channel.createInvite({ targetUser: userId });
+      message.reply(`Here's the invite for the user with ID ${userId}: ${invite.url}`);
+    } catch (error) {
+      console.error('Error creating invite:', error);
+      message.reply('An error occurred while generating the invite.');
+    }
   }
 });
 
@@ -214,6 +307,35 @@ client.on('guildMemberAdd', (member) => {
       });
   }
 });
+
+client.on('guildMemberAdd', async (member) => {
+  const accountAgeInDays = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24);
+
+  if (accountAgeInDays < 7) {
+    try {
+      // Send a direct message to the user
+      const dmChannel = await member.user.createDM();
+      if (dmChannel) {
+        const kickMessage =
+          `Hello ${member.user.username},\n` +
+          `You have been kicked from this server because your Discord account is less than 7 days old. ` +
+          `If you believe this is a mistake, please email your appeal to ${appealEmail}.`;
+        await dmChannel.send(kickMessage);
+      }
+    } catch (error) {
+      console.error('Error sending DM to kicked user:', error);
+    }
+
+    // Kick the user from the server
+    try {
+      await member.kick('Account age is less than 7 days');
+      console.log(`Kicked ${member.user.tag} from ${member.guild.name}`);
+    } catch (error) {
+      console.error(`Error kicking ${member.user.tag} from ${member.guild.name}:`, error);
+    }
+  }
+});
+
 
 // Register slash commands in every guild the bot is a member of
 client.on('ready', async () => {
@@ -315,6 +437,20 @@ client.on('guildCreate', async (guild) => {
       },
     ]);
     console.log(`Slash commands registered in ${guild.name}`);
+
+    // Check for banned users in the newly joined server
+    const bans = await guild.bans.fetch();
+    for (const [userId, banInfo] of bannedUsers) {
+      if (bans.has(userId)) {
+        const bannedUser = bans.get(userId).user;
+        try {
+          await guild.bans.remove(userId, 'Banned user detected in the server.');
+          console.log(`Banned user with ID ${userId} (${bannedUser.tag}) from ${guild.name}`);
+        } catch (error) {
+          console.error(`Error banning user with ID ${userId} (${bannedUser.tag}) from ${guild.name}:`, error);
+        }
+      }
+    }
   } catch (error) {
     console.error(`Error registering slash commands in ${guild.name}:`, error);
   }
@@ -337,7 +473,7 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply('Please provide all required fields.');
     }
 
-    const reportChannelId = 'REPORT_CHANNEL_ID'; // Replace with the ID of the report channel
+    const reportChannelId = 'REPORTS TO BE SENT TO THIS CHANNEL ID'; // Replace with the ID of the report channel
 
     const reportChannel = client.channels.cache.get(reportChannelId);
     if (!reportChannel || reportChannel.type !== 'GUILD_TEXT') {
@@ -378,7 +514,7 @@ client.on('interactionCreate', async (interaction) => {
       .setDescription('ModGuardian is a powerful moderation bot designed to keep your server safe. It will automatically ban any users which has been reported to us via the report command.')
       .addFields(
         { name: 'Command: report', value: 'Usage: `/report <user_id> <username> <reporting_message> <evidence> [contact]`', inline: false },
-        { name: 'Description:', value: 'Report a user to the moderation team.', inline: true },	
+        { name: 'Description:', value: 'Report a user to the moderation team.', inline: true },
         { name: 'Command: help', value: 'Usage: `/help`', inline: false },
         { name: 'Description:', value: 'Displays this help message.', inline: true }
       )
@@ -388,5 +524,4 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login('BOT_TOKEN');
-
+client.login('BOT TOKEN');
