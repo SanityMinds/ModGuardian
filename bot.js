@@ -11,12 +11,12 @@ const client = new Client({
   ],
 });
 
-const allowedUserId = 'USER ID'; // User IDs for moderators who can ban
+const allowedUserId = 'UserID'; // User IDs for moderators who can ban
 const commandPrefix = '...'; //prefix
 const bannedUsersFile = 'bannedUsers.json'; //banned users file for storing and accessing user DB of banned users
 const appealEmail = 'APPEAL EMAIL'; //Appeal email inserted here
 const blockedWords = ['badword1', 'badword2', 'badword3']; // Badwords which are logged and moderated
-const logChannelId = 'Bad word log channel'; // Logs all "badwords" sent in channels the bot can see and sends it to the channel
+const logChannelId = 'Badword Log'; // Logs all "badwords" sent in channels the bot can see and sends it to the channel
 
 const bansPerPage = 10; // Number of bans to display per page
 
@@ -52,6 +52,12 @@ function saveBannedUsersToFile() {
 
 function refreshBannedUsersCache() {
   bannedUsers = new Map(JSON.parse(fs.readFileSync(bannedUsersFile, 'utf-8')));
+}
+
+// Function to check if a name contains any of the blocked words
+function containsBlockedWords(name) {
+  const lowerCaseName = name.toLowerCase();
+  return blockedWords.some((word) => lowerCaseName.includes(word));
 }
 
 async function unbanUserFromAllServers(userId) {
@@ -115,6 +121,81 @@ async function kickUnder7DaysOldMembers() {
     console.error('Error fetching guilds:', error);
   }
 }
+
+// Function to kick users with inappropriate usernames
+async function kickUsersWithInappropriateNames() {
+  try {
+    const guilds = client.guilds.cache.values();
+    for (const guild of guilds) {
+      try {
+        const members = await guild.members.fetch();
+        for (const member of members.values()) {
+          if (containsBlockedWords(member.user.username)) {
+            try {
+              // Send a direct message to the user
+              const dmChannel = await member.user.createDM();
+              if (dmChannel) {
+                const kickMessage =
+                  `Hello ${member.user.username},\n` +
+                  `You have been kicked from ${guild.name} because your username or nickname contains inappropriate words. ` +
+                  `If you believe this is a mistake or have any queries, please email ${appealEmail}.`;
+                await dmChannel.send(kickMessage);
+              }
+            } catch (error) {
+              console.error('Error sending DM to kicked user:', error);
+            }
+
+            // Kick the user from the server
+            try {
+              await member.kick('Inappropriate username detected');
+              console.log(`Kicked ${member.user.tag} from ${guild.name} for having an inappropriate username.`);
+            } catch (error) {
+              if (error.code === 50013) {
+                console.error(`Missing permissions to kick ${member.user.tag} from ${guild.name}`);
+              } else {
+                console.error(`Error kicking ${member.user.tag} from ${guild.name}:`, error);
+              }
+            }
+          }
+          if (member.nickname && containsBlockedWords(member.nickname)) {
+            try {
+              // Send a direct message to the user
+              const dmChannel = await member.user.createDM();
+              if (dmChannel) {
+                const kickMessage =
+                  `Hello ${member.user.username},\n` +
+                  `You have been kicked from ${guild.name} because your username or nickname contains inappropriate words. ` +
+                  `If you believe this is a mistake or have any queries, please email ${appealEmail}.`;
+                await dmChannel.send(kickMessage);
+              }
+            } catch (error) {
+              console.error('Error sending DM to kicked user:', error);
+            }
+
+            // Kick the user from the server
+            try {
+              await member.kick('Inappropriate nickname detected');
+              console.log(`Kicked ${member.user.tag} from ${guild.name} for having an inappropriate nickname.`);
+            } catch (error) {
+              if (error.code === 50013) {
+                console.error(`Missing permissions to kick ${member.user.tag} from ${guild.name}`);
+              } else {
+                console.error(`Error kicking ${member.user.tag} from ${guild.name}:`, error);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching members from ${guild.name}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching guilds:', error);
+  }
+}
+
+// Kick users with inappropriate names on a timer (3 minutes)
+setInterval(kickUsersWithInappropriateNames, 3 * 60 * 1000);
 
 client.on('messageCreate', async (message) => {
   if (!message.content.startsWith(commandPrefix) || message.author.bot) {
@@ -504,7 +585,7 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply('Please provide all required fields.');
     }
 
-    const reportChannelId = 'REPORTS TO BE SENT TO THIS CHANNEL ID'; // Replace with the ID of the report channel
+    const reportChannelId = 'REPORT CHANNEL ID'; // Replace with the ID of the report channel
 
     const reportChannel = client.channels.cache.get(reportChannelId);
     if (!reportChannel || reportChannel.type !== 'GUILD_TEXT') {
@@ -555,4 +636,4 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login('Bot Token'); //Replace with your bot token
+client.login('BOT TOKEN'); //Replace with your bot token
