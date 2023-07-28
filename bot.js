@@ -11,12 +11,12 @@ const client = new Client({
   ],
 });
 
-const allowedUserId = 'UserID'; // User IDs for moderators who can ban
+const allowedUserId = 'USER IDS'; // User IDs for moderators who can ban
 const commandPrefix = '...'; //prefix
 const bannedUsersFile = 'bannedUsers.json'; //banned users file for storing and accessing user DB of banned users
-const appealEmail = 'APPEAL EMAIL'; //Appeal email inserted here
-const blockedWords = ['badword1', 'badword2', 'badword3']; // Badwords which are logged and moderated
-const logChannelId = 'Badword Log'; // Logs all "badwords" sent in channels the bot can see and sends it to the channel
+const appealEmail = 'appeals@bytelabs.site'; //Appeal email inserted here
+const blockedWords = ['BAD WORD','BADWORD'].filter(word => word.trim() !== ''); // Badwords which are logged and moderated
+const logChannelId = 'log channel'; // Logs all "badwords" sent in channels the bot can see and sends it to the channel
 
 const bansPerPage = 10; // Number of bans to display per page
 
@@ -205,15 +205,15 @@ client.on('messageCreate', async (message) => {
 
     if (blockedWordFound) {
       // Create an embed to log the offensive message
-      const embed = new MessageEmbed()
-        .setColor('#FF0000')
-        .setTitle('Offensive Message Logged')
-        .addField('User ID', message.author.id)
-        .addField('Username', message.author.username)
-        .addField('Server Name', message.guild?.name || 'Direct Message')
-        .addField('Message Content', message.content)
-        .setFooter(`Message ID: ${message.id}`)
-        .setTimestamp();
+const embed = new MessageEmbed()
+  .setColor('#FF0000')
+  .setTitle('Offensive Message Logged')
+  .addField('User ID', message.author.id)
+  .addField('Username', message.author.username)
+  .addField('Server Name', message.guild?.name || 'Direct Message')
+  .addField('Message Content', message.content)
+  .setFooter({ text: `Message ID: ${message.id}` }) // Update this line
+  .setTimestamp();
 
       // Send the embed to the log channel
       const logChannel = client.channels.cache.get(logChannelId);
@@ -225,9 +225,8 @@ client.on('messageCreate', async (message) => {
         }
       }
     }
-
     return;
-  }
+    }
 
   const args = message.content.slice(commandPrefix.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
@@ -585,7 +584,7 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply('Please provide all required fields.');
     }
 
-    const reportChannelId = 'REPORT CHANNEL ID'; // Replace with the ID of the report channel
+    const reportChannelId = 'report channel ID'; // Replace with the ID of the report channel
 
     const reportChannel = client.channels.cache.get(reportChannelId);
     if (!reportChannel || reportChannel.type !== 'GUILD_TEXT') {
