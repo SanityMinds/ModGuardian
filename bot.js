@@ -11,10 +11,12 @@ const client = new Client({
   ],
 });
 
-const allowedUserId = 'YOUR USER ID ';
-const commandPrefix = '...';
-const bannedUsersFile = 'bannedUsers.json';
-const appealEmail = 'APPEAL EMAIL';
+const allowedUserId = 'USER ID'; // User IDs for moderators who can ban
+const commandPrefix = '...'; //prefix
+const bannedUsersFile = 'bannedUsers.json'; //banned users file for storing and accessing user DB of banned users
+const appealEmail = 'APPEAL EMAIL'; //Appeal email inserted here
+const blockedWords = ['badword1', 'badword2', 'badword3']; // Badwords which are logged and moderated
+const logChannelId = 'Bad word log channel'; // Logs all "badwords" sent in channels the bot can see and sends it to the channel
 
 const bansPerPage = 10; // Number of bans to display per page
 
@@ -115,7 +117,36 @@ async function kickUnder7DaysOldMembers() {
 }
 
 client.on('messageCreate', async (message) => {
-  if (!message.content.startsWith(commandPrefix) || message.author.bot) return;
+  if (!message.content.startsWith(commandPrefix) || message.author.bot) {
+    // Check for blocked words
+    const lowerCaseContent = message.content.toLowerCase();
+    const blockedWordFound = blockedWords.some((word) => lowerCaseContent.includes(word));
+
+    if (blockedWordFound) {
+      // Create an embed to log the offensive message
+      const embed = new MessageEmbed()
+        .setColor('#FF0000')
+        .setTitle('Offensive Message Logged')
+        .addField('User ID', message.author.id)
+        .addField('Username', message.author.username)
+        .addField('Server Name', message.guild?.name || 'Direct Message')
+        .addField('Message Content', message.content)
+        .setFooter(`Message ID: ${message.id}`)
+        .setTimestamp();
+
+      // Send the embed to the log channel
+      const logChannel = client.channels.cache.get(logChannelId);
+      if (logChannel && logChannel.isText()) {
+        try {
+          await logChannel.send({ embeds: [embed] });
+        } catch (error) {
+          console.error('Error sending the log message:', error);
+        }
+      }
+    }
+
+    return;
+  }
 
   const args = message.content.slice(commandPrefix.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
@@ -524,4 +555,4 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login('BOT TOKEN');
+client.login('Bot Token'); //Replace with your bot token
