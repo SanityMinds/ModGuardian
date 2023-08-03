@@ -11,15 +11,17 @@ const client = new Client({
   ],
 });
 
-const allowedUserId = 'USER IDS'; // User IDs for moderators who can ban
+const allowedUserId = 'USERID'; // User IDs for moderators who can ban
 const commandPrefix = '...'; //prefix
 const bannedUsersFile = 'bannedUsers.json'; //banned users file for storing and accessing user DB of banned users
-const appealEmail = 'appeals@bytelabs.site'; //Appeal email inserted here
-const blockedWords = ['BAD WORD','BADWORD'].filter(word => word.trim() !== ''); // Badwords which are logged and moderated
-const logChannelId = 'log channel'; // Logs all "badwords" sent in channels the bot can see and sends it to the channel
+const appealEmail = 'APPEAL_EMAIL'; //Appeal email inserted here
+const blockedWords = ['badword1','badword2'].filter(word => word.trim() !== ''); // Badwords which are logged and moderated
+const logChannelId = 'LOG_CHANNEL_ID'; // Logs all "badwords" sent in channels the bot can see and sends it to the channel<
 
 const bansPerPage = 10; // Number of bans to display per page
+const warningsFile = 'warnings.json'; // File to store the warnings for each user
 
+let warningsData = {};
 let bannedUsers = new Map();
 
 // Load banned users from file
@@ -29,6 +31,54 @@ if (fs.existsSync(bannedUsersFile)) {
     bannedUsers = new Map(JSON.parse(bannedUsersData));
   } catch (error) {
     console.error('Error parsing banned users data:', error);
+  }
+}
+
+if (fs.existsSync(warningsFile)) {
+  try {
+    const warningsDataStr = fs.readFileSync(warningsFile, 'utf-8');
+    warningsData = JSON.parse(warningsDataStr);
+  } catch (error) {
+    console.error('Error parsing warnings data:', error);
+  }
+}
+
+function saveWarningsToFile() {
+  const warningsDataStr = JSON.stringify(warningsData);
+  fs.writeFileSync(warningsFile, warningsDataStr, 'utf-8');
+}
+
+function getWarningsForUser(userId) {
+  if (warningsData[userId]) {
+    return warningsData[userId];
+  } else {
+    return [];
+  }
+}
+
+function addWarning(userId, moderatorId, reason) {
+  const newWarning = {
+    moderatorId,
+    reason,
+    timestamp: Date.now()
+  };
+
+  if (!warningsData[userId]) {
+    warningsData[userId] = [newWarning];
+  } else {
+    warningsData[userId].push(newWarning);
+  }
+
+  saveWarningsToFile();
+}
+
+function removeWarning(userId, index) {
+  if (warningsData[userId] && warningsData[userId][index]) {
+    warningsData[userId].splice(index, 1);
+    saveWarningsToFile();
+    return true;
+  } else {
+    return false;
   }
 }
 
@@ -305,6 +355,75 @@ const embed = new MessageEmbed()
       console.error('Error unbanning user:', error);
       message.reply('An error occurred while unbanning the user.');
     }
+  } else if (command === 'warn') {
+    if (message.author.id !== allowedUserId) {
+      return message.reply('You don\'t have permission to use this command.');
+    }
+
+    const targetUser = message.mentions.users.first() || client.users.cache.get(args[0]);
+    const reason = args.slice(1).join(' ');
+
+    if (!targetUser || !reason) {
+      return message.reply('Please provide a valid user mention/ID and a reason to warn the user.');
+    }
+
+    try {
+      const dmChannel = await targetUser.createDM();
+      if (dmChannel) {
+        const warnMessage = `You have been warned for the following reason: ${reason}\nPlease be aware that further violations may result in more severe actions. If you believe this warning is unjust or have any queries, you may appeal by emailing ${appealEmail}.`;
+        await dmChannel.send(warnMessage);
+      } else {
+        console.log(`Failed to send DM to warned user: ${targetUser.tag}`);
+      }
+    } catch (error) {
+      console.error('Error sending DM to warned user:', error);
+    }
+
+    addWarning(targetUser.id, message.author.id, reason);
+    message.reply(`User ${targetUser.tag} has been warned.`);
+  } else if (command === 'removewarning') {
+    if (message.author.id !== allowedUserId) {
+      return message.reply('You don\'t have permission to use this command.');
+    }
+
+    const targetUser = message.mentions.users.first() || client.users.cache.get(args[0]);
+    const index = parseInt(args[1], 10);
+
+    if (!targetUser || isNaN(index)) {
+      return message.reply('Please provide a valid user mention/ID and the index of the warning to remove.');
+    }
+
+    const warnings = getWarningsForUser(targetUser.id);
+    if (removeWarning(targetUser.id, index - 1)) {
+      message.reply(`Warning ${index} has been removed for user ${targetUser.tag}.`);
+    } else {
+      message.reply(`Warning ${index} not found for user ${targetUser.tag}.`);
+    }
+  } else if (command === 'warnings') {
+    const targetUser = message.mentions.users.first() || client.users.cache.get(args[0]);
+
+    if (!targetUser) {
+      return message.reply('Please provide a valid user mention/ID to view their warnings.');
+    }
+
+    const warnings = getWarningsForUser(targetUser.id);
+
+    if (warnings.length === 0) {
+      return message.reply(`User ${targetUser.tag} has no warnings.`);
+    }
+
+    const embed = new MessageEmbed()
+      .setColor('#FF0000')
+      .setTitle(`Warnings for ${targetUser.tag}`);
+
+    warnings.forEach((warning, index) => {
+      const moderator = client.users.cache.get(warning.moderatorId);
+      embed.addField(`Warning ${index + 1}`, `Moderator: ${moderator ? moderator.tag : warning.moderatorId}\nReason: ${warning.reason}\nTimestamp: ${new Date(warning.timestamp).toLocaleString()}`);
+    });
+
+    message.channel.send({ embeds: [embed] });
+  
+
   } else if (command === 'bans') {
     if (message.author.id !== allowedUserId) {
       return message.reply('You don\'t have permission to use this command.');
@@ -584,7 +703,7 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply('Please provide all required fields.');
     }
 
-    const reportChannelId = 'report channel ID'; // Replace with the ID of the report channel
+    const reportChannelId = 'REPORT_CHANNEL_ID'; // Replace with the ID of the report channel
 
     const reportChannel = client.channels.cache.get(reportChannelId);
     if (!reportChannel || reportChannel.type !== 'GUILD_TEXT') {
@@ -635,4 +754,4 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login('BOT TOKEN'); //Replace with your bot token
+client.login('BOT_TOKEN'); //Replace with your bot token
