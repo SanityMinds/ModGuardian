@@ -1,7 +1,7 @@
 # ModGuardian
 ModGuardian is a discord bot which bans users in EVERY server. Open source &amp; free. 
 
-#Installation
+# Installation
 
 - Download the bot.js and bannedUsers.json files and add them to a folder.
 - Install Node.JS
