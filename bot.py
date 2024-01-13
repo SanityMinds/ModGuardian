@@ -6,14 +6,14 @@ from datetime import datetime
 import re
 
 # Discord Bot Token
-DISCORD_TOKEN = 'DISCORD_BOT_TOKEN'
+DISCORD_TOKEN = 'BOT_TOKEN'
 
 # OpenAI API Key (text moderation costs $0 to run)
-OPENAI_API_KEY = 'OPENAI_TOKEN'
+OPENAI_API_KEY = 'OPENAI_API_KEY'
 
 
-LOG_CHANNEL_ID = 1234  # Replace with your Discord channel ID of logging channel
-AUTHORIZED_USER_IDS = ['', '']  # Replace with actual user IDs of mods
+LOG_CHANNEL_ID = 1150900821693833366  # Replace with your Discord channel ID of logging channel
+AUTHORIZED_USER_IDS = ['974368593615659098', '']  # Replace with actual user IDs of mods
 BAN_APPEAL_EMAIL = 'appeals@bytelabs.site'  # Replace with your actual email for appeals
 BANNED_USERS_FILE = 'banned_users.txt'  # Path to the file where banned user info will be stored
 WARNINGS_FILE = 'warnings.txt' # Path to the file where warnings are stored for record keeping 
@@ -28,7 +28,7 @@ intents.dm_messages = True
 intents.members = True
 
 # Initialize Discord Bot with intents
-bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
+bot = commands.Bot(command_prefix='...', intents=intents, help_command=None)
 
 # OpenAI client setup
 openai.api_key = OPENAI_API_KEY
@@ -288,18 +288,39 @@ async def on_member_join(member):
             pass  # Bot doesn't have ban permissions
         except discord.HTTPException:
             pass  # Failed to send DM or ban user
-
-# Start the nickname check loop when bot is ready
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user}')
-    check_nicknames_periodically.start()
-
-# Event listener for new servers joined
+    
 @bot.event
 async def on_guild_join(guild):
     await check_all_members(guild)
 
+@tasks.loop(minutes=NICKNAME_CHECK_INTERVAL)
+async def check_nicknames_periodically():
+    for guild in bot.guilds:
+        await check_all_members(guild)
+        
+@check_nicknames_periodically.before_loop
+async def before_check_nicknames_periodically():
+    await bot.wait_until_ready()
+    
+# Start the nickname check loop when bot is ready
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+    if not check_nicknames_periodically.is_running():
+        check_nicknames_periodically.start()
+        
+@bot.event
+async def on_disconnect():
+    if check_nicknames_periodically.is_running():
+        check_nicknames_periodically.cancel()
+
+@bot.event
+async def on_error(event_method, *args, **kwargs):
+    with open('err.log', 'a') as f:
+        if event_method == 'on_message':
+            f.write(f'Unhandled message: {args[0]}\n')
+        else:
+            raise
 # Event listener for on_message
 @bot.event
 async def on_message(message):
